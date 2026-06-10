@@ -846,25 +846,31 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         return;
       }
 
-      // Look up title from TMDB — Stremio search only handles text queries
+      // Look up title from TMDB — Stremio search only handles text queries.
+      // Try multiple search variations: short titles like "FROM" need the
+      // year for disambiguation, while longer titles match better without it.
       const tmdb = new TheMovieDb();
-      let title: string | undefined;
+      let searchTerms: string[] = [];
 
       if (entity.type === MediaType.MOVIE) {
         const movie = await tmdb.getMovie({ movieId: tmdbId });
-        title = movie.title;
-        if (movie.release_date) {
-          title += ` ${movie.release_date.slice(0, 4)}`;
+        if (movie.title) {
+          searchTerms.push(movie.title);
+          if (movie.release_date) {
+            searchTerms.push(`${movie.title} ${movie.release_date.slice(0, 4)}`);
+          }
         }
       } else {
         const tv = await tmdb.getTvShow({ tvId: tmdbId });
-        title = tv.name;
-        if (tv.first_air_date) {
-          title += ` ${tv.first_air_date.slice(0, 4)}`;
+        if (tv.name) {
+          searchTerms.push(tv.name);
+          if (tv.first_air_date) {
+            searchTerms.push(`${tv.name} ${tv.first_air_date.slice(0, 4)}`);
+          }
         }
       }
 
-      if (!title) {
+      if (!searchTerms.length) {
         logger.warn('Could not resolve title from TMDB', {
           label: 'Gelato',
           requestId: entity.id,
@@ -927,12 +933,12 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         entity.type === MediaType.MOVIE ? 'movie' : 'series';
 
       logger.info(
-        `Triggering Gelato insert for ${jellyfinType} "${title}" (TMDB: ${tmdbId})`,
+        `Triggering Gelato insert for ${jellyfinType} "${searchTerms[0]}" (TMDB: ${tmdbId})`,
         { label: 'Gelato', requestId: entity.id }
       );
 
       const result = await gelatoClient.triggerGelatoInsert(
-        title,
+        searchTerms,
         jellyfinType,
         tmdbId,
         admin.jellyfinUserId

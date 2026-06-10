@@ -474,76 +474,72 @@ class JellyfinAPI extends ExternalAPI {
   /**
    * Trigger Gelato to add a virtual item to Jellyfin's library.
    *
-   * Searches by title+year (text that Stremio handles), then verifies
-   * the match by TMDB ID before triggering insertion. Gelato's
-   * SearchActionFilter caches StremioMeta on search, and InsertActionFilter
-   * calls InsertMeta() on item retrieval.
+   * Tries multiple search terms (title, title+year) to find the best match,
+   * then verifies by TMDB ID before triggering insertion.
    */
   public async triggerGelatoInsert(
-    title: string,
+    searchTerms: string[],
     type: 'movie' | 'series',
     tmdbId: number,
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const searchPath = `/Users/${userId}/Items`;
-      const searchResponse = await this.get<{
-        Items: Array<{
-          Id: string;
-          Name: string;
-          ProviderIds?: Record<string, string>;
-        }>;
-        TotalRecordCount: number;
-      }>(searchPath, {
-        params: {
-          searchTerm: title,
-          IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
-          Recursive: true,
-          Limit: 10,
-        },
-      });
+    const targetTmdb = String(tmdbId);
+    const searchPath = `/Users/${userId}/Items`;
+    const includeTypes = type === 'movie' ? 'Movie' : 'Series';
 
-      if (!searchResponse.Items?.length) {
-        return { success: false, error: 'No results from Gelato/Stremio search' };
-      }
+    // Try each search term until we find a TMDB match
+    for (const searchTerm of searchTerms) {
+      try {
+        const searchResponse = await this.get<{
+          Items: Array<{
+            Id: string;
+            Name: string;
+            ProviderIds?: Record<string, string>;
+          }>;
+          TotalRecordCount: number;
+        }>(searchPath, {
+          params: {
+            searchTerm,
+            IncludeItemTypes: includeTypes,
+            Recursive: true,
+            Limit: 25,
+          },
+        });
 
-      // Verify match by TMDB ID to ensure we pick the exact item
-      const targetTmdb = String(tmdbId);
-      const match = searchResponse.Items.find((item) => {
-        const tmdb = item.ProviderIds?.Tmdb || item.ProviderIds?.TheMovieDb;
-        return tmdb === targetTmdb;
-      });
+        if (!searchResponse.Items?.length) {
+          continue;
+        }
 
-      if (!match) {
-        const foundIds = searchResponse.Items
-          .map((item) => item.ProviderIds?.Tmdb || item.ProviderIds?.TheMovieDb || '?')
-          .join(', ');
-        logger.warn(
-          `[Gelato] TMDB ${tmdbId} not in results. Found TMDBs: [${foundIds}]`,
-          { label: 'Gelato', names: searchResponse.Items.map((i) => i.Name) }
+        const match = searchResponse.Items.find((item) => {
+          const tmdb = item.ProviderIds?.Tmdb || item.ProviderIds?.TheMovieDb;
+          return tmdb === targetTmdb;
+        });
+
+        if (match) {
+          await this.get(`/Users/${userId}/Items/${match.Id}`);
+
+          logger.info(
+            `[Gelato] Insert triggered for "${searchTerm}" (TMDB: ${tmdbId})`,
+            { label: 'Gelato', stremioGuid: match.Id }
+          );
+          return { success: true };
+        }
+
+        logger.debug(
+          `[Gelato] "${searchTerm}" returned ${searchResponse.Items.length} results, no TMDB ${tmdbId}`,
+          { label: 'Gelato' }
         );
-        return {
-          success: false,
-          error: `TMDB ID ${tmdbId} not found in search results (got ${searchResponse.Items.length} results, TMDBs: ${foundIds})`,
-        };
+      } catch (e) {
+        logger.debug(`[Gelato] Search failed for "${searchTerm}": ${e.message}`, {
+          label: 'Gelato',
+        });
       }
-
-      // "Click" the matched item — triggers Gelato InsertActionFilter → InsertMeta()
-      await this.get(`/Users/${userId}/Items/${match.Id}`);
-
-      logger.info(`[Gelato] Insert triggered for "${title}" (TMDB: ${tmdbId})`, {
-        label: 'Gelato',
-        stremioGuid: match.Id,
-      });
-
-      return { success: true };
-    } catch (e) {
-      logger.error(`[Gelato] Insert failed for "${title}": ${e.message}`, {
-        label: 'Gelato',
-        error: e.message,
-      });
-      return { success: false, error: e.message };
     }
+
+    return {
+      success: false,
+      error: `TMDB ID ${tmdbId} not found with search terms: ${searchTerms.join(', ')}`,
+    };
   }
 }
 
