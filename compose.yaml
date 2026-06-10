@@ -1,11 +1,13 @@
 services:
-  seerr:
-    build:
-      context: .
-      dockerfile: Dockerfile.local
+  seerr-gelato:
+    image: irunmole/seerr-gelato:latest
+    container_name: seerr-gelato
     ports:
       - 5055:5055
     volumes:
-      - .:/app:rw,cached
-      - /app/node_modules
-      - /app/.next
+      - ./config:/app/config
+    environment:
+      - TZ=${TZ:-UTC}
+      - JELLYFIN_URL=${JELLYFIN_URL:-http://jellyfin:8096}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+    restart: unless-stopped
