@@ -480,20 +480,25 @@ class JellyfinAPI extends ExternalAPI {
    */
   public async triggerGelatoInsert(
     imdbId: string,
-    type: 'movie' | 'series'
+    type: 'movie' | 'series',
+    userId?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      const params: Record<string, string | number> = {
+        searchTerm: imdbId,
+        IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
+        Recursive: true,
+        Limit: 1,
+      };
+
+      if (userId) {
+        params.userId = userId;
+      }
+
       const searchResponse = await this.get<{
         Items: Array<{ Id: string; Name: string }>;
         TotalRecordCount: number;
-      }>('/Items', {
-        params: {
-          searchTerm: imdbId,
-          IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
-          Recursive: true,
-          Limit: 1,
-        },
-      });
+      }>('/Items', { params });
 
       const firstItem = searchResponse.Items?.[0];
       if (!firstItem?.Id) {

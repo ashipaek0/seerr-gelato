@@ -2,6 +2,7 @@ services:
   seerr-gelato:
     image: irunmole/seerr-gelato:latest
     container_name: seerr-gelato
+    user: ${PUID:-1000}:${PGID:-1000}
     ports:
       - 5055:5055
     volumes:
@@ -11,3 +12,6 @@ services:
       - JELLYFIN_URL=${JELLYFIN_URL:-http://jellyfin:8096}
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1

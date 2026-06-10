@@ -16,6 +16,7 @@ import {
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { MediaRequest } from '@server/entity/MediaRequest';
+import { User } from '@server/entity/User';
 import Season from '@server/entity/Season';
 import SeasonRequest from '@server/entity/SeasonRequest';
 import notificationManager, { Notification } from '@server/lib/notifications';
@@ -862,6 +863,13 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         settings.jellyfin.apiKey
       );
 
+      // Get admin user's Jellyfin ID for Gelato config lookup
+      const userRepository = getRepository(User);
+      const admin = await userRepository.findOne({
+        where: { id: 1 },
+        select: ['id', 'jellyfinUserId'],
+      });
+
       const jellyfinType =
         entity.type === MediaType.MOVIE ? 'movie' : 'series';
 
@@ -872,7 +880,8 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
 
       const result = await jellyfinClient.triggerGelatoInsert(
         imdbId,
-        jellyfinType
+        jellyfinType,
+        admin?.jellyfinUserId
       );
 
       if (result.success) {
