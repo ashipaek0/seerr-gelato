@@ -470,7 +470,6 @@ class JellyfinAPI extends ExternalAPI {
       throw new ApiError(e.response?.status, ApiErrorCode.InvalidAuthToken);
     }
   }
-}
 
   /**
    * Trigger Gelato to add a virtual item to Jellyfin's library.
