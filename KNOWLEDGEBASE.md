@@ -13,20 +13,23 @@ This is a fork of [Seerr](https://github.com/seerr-team/seerr) (branch `develop`
 When a user requests media and it gets approved (or auto-approved):
 
 ```
-Seerr approves request
+Seerr approves request (status = APPROVED)
   ↓
-sendToGelato() fires in MediaRequestSubscriber
+MediaRequestSubscriber.afterUpdate / afterInsert fires
   ↓
-1. Fetch title from TMDB (by TMDB ID) — "Title Year" format
-2. Authenticate with Jellyfin via /Users/AuthenticateByName (env vars)
-   → Get session token with proper userId (NOT API key — see Gotcha #1)
-3. Search Jellyfin: GET /Users/{userId}/Items?searchTerm=Title&IncludeItemTypes=Movie&Recursive=true&Limit=25
-   → Gelato's SearchActionFilter intercepts, searches Stremio, caches StremioMeta
-4. Parse response, find item where ProviderIds.Tmdb matches target TMDB ID
-5. "Click" the item: GET /Users/{userId}/Items/{stremioGuid}
-   → Gelato's InsertActionFilter intercepts, reads cached StremioMeta, calls InsertMeta()
-   → Virtual item created in Jellyfin database
-6. Mark request COMPLETED
+1. updateParentStatus() — sets Media.status = PROCESSING (requires APPROVED status)
+2. sendToGelato():
+   a. Fetch title from TMDB (by TMDB ID) — "Title Year" format
+   b. Authenticate with Jellyfin via /Users/AuthenticateByName (env vars)
+      → Get session token with proper userId (NOT API key — see Gotcha #1)
+   c. Search Jellyfin: GET /Users/{userId}/Items?searchTerm=Title&IncludeItemTypes=Movie&Recursive=true&Limit=25
+      → Gelato's SearchActionFilter intercepts, searches Stremio, caches StremioMeta
+   d. Parse response, find item where ProviderIds.Tmdb matches target TMDB ID
+   e. "Click" the item: GET /Users/{userId}/Items/{stremioGuid}
+      → Gelato's InsertActionFilter intercepts, reads cached StremioMeta, calls InsertMeta()
+      → Virtual item created in Jellyfin database
+   f. Mark request COMPLETED
+3. Jellyfin scanner detects new item → updates Media.status to AVAILABLE
 ```
 
 ## Files Modified (from upstream Seerr develop)
@@ -131,7 +134,15 @@ All `seerr-team/seerr` references replaced with `ashipaek0/seerr-gelato`.
 
 **Fix**: Use `/Users/{userId}/Items?...` and `/Users/{userId}/Items/{guid}` for both search and click. This ensures Gelato resolves the correct user config.
 
-### Gotcha #5: Docker permissions
+### Gotcha #5: updateParentStatus must run before sendToGelato
+**Problem**: If `sendToGelato` sets request status to `COMPLETED` before `updateParentStatus` runs, `updateParentStatus` sees `COMPLETED` instead of `APPROVED` and skips the `Media.status = PROCESSING` update. Media stays stuck at `PENDING` forever.
+
+**Fix**: In `afterUpdate` and `afterInsert`, run `updateParentStatus` FIRST (while status is still `APPROVED`), then `sendToGelato`. Flow:
+1. `updateParentStatus` → sets `Media.status = PROCESSING`
+2. `sendToGelato` → triggers Gelato → sets request to `COMPLETED`
+3. Jellyfin scanner detects new item → updates `Media.status` to `AVAILABLE`
+
+### Gotcha #6: Docker permissions
 The container runs as `node:node`. Bind-mounted `./config` directory must be writable by UID 1000. Use `user:` in compose or `chown 1000:1000 ./config` on host.
 
 ## Debugging Commands
