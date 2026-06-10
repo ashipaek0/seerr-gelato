@@ -892,6 +892,37 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         return;
       }
 
+      // Get session token — API keys carry a zero GUID userId claim
+      // which causes Gelato's InsertActionFilter to skip. Session tokens
+      // from AuthenticateByName have proper user identity.
+      const jellyfinUsername = process.env.JELLYFIN_USERNAME;
+      const jellyfinPassword = process.env.JELLYFIN_PASSWORD;
+
+      let sessionToken: string | undefined;
+
+      if (jellyfinUsername && jellyfinPassword) {
+        try {
+          const authResponse = await jellyfinClient.login(
+            jellyfinUsername,
+            jellyfinPassword
+          );
+          sessionToken = authResponse.AccessToken;
+          logger.debug('Obtained Jellyfin session token for Gelato', {
+            label: 'Gelato',
+          });
+        } catch (e) {
+          logger.warn('Failed to get Jellyfin session token, falling back to API key', {
+            label: 'Gelato',
+            error: e.message,
+          });
+        }
+      }
+
+      // Create a client with the session token if available, otherwise API key
+      const gelatoClient = sessionToken
+        ? new JellyfinAPI(getHostname(), sessionToken)
+        : jellyfinClient;
+
       const jellyfinType =
         entity.type === MediaType.MOVIE ? 'movie' : 'series';
 
@@ -900,7 +931,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         { label: 'Gelato', requestId: entity.id }
       );
 
-      const result = await jellyfinClient.triggerGelatoInsert(
+      const result = await gelatoClient.triggerGelatoInsert(
         title,
         jellyfinType,
         tmdbId,
