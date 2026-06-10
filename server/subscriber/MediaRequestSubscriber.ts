@@ -846,12 +846,38 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         return;
       }
 
+      // Look up title from TMDB — Stremio search only handles text queries
+      const tmdb = new TheMovieDb();
+      let title: string | undefined;
+
+      if (entity.type === MediaType.MOVIE) {
+        const movie = await tmdb.getMovie({ movieId: tmdbId });
+        title = movie.title;
+        if (movie.release_date) {
+          title += ` ${movie.release_date.slice(0, 4)}`;
+        }
+      } else {
+        const tv = await tmdb.getTvShow({ tvId: tmdbId });
+        title = tv.name;
+        if (tv.first_air_date) {
+          title += ` ${tv.first_air_date.slice(0, 4)}`;
+        }
+      }
+
+      if (!title) {
+        logger.warn('Could not resolve title from TMDB', {
+          label: 'Gelato',
+          requestId: entity.id,
+          tmdbId,
+        });
+        return;
+      }
+
       const jellyfinClient = new JellyfinAPI(
         getHostname(),
         settings.jellyfin.apiKey
       );
 
-      // Get admin user's Jellyfin ID — required for Gelato to resolve Stremio config
       const userRepository = getRepository(User);
       const admin = await userRepository.findOne({
         where: { id: 1 },
@@ -869,18 +895,15 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       const jellyfinType =
         entity.type === MediaType.MOVIE ? 'movie' : 'series';
 
-      // Search by TMDB ID in Stremio URI format (tmdb:<id>) — IMDB IDs
-      // don't work with Stremio's search, but TMDB IDs do
-      const searchTerm = `tmdb:${tmdbId}`;
-
       logger.info(
-        `Triggering Gelato insert for ${jellyfinType} "${tmdbId}"`,
+        `Triggering Gelato insert for ${jellyfinType} "${title}" (TMDB: ${tmdbId})`,
         { label: 'Gelato', requestId: entity.id }
       );
 
       const result = await jellyfinClient.triggerGelatoInsert(
-        searchTerm,
+        title,
         jellyfinType,
+        tmdbId,
         admin.jellyfinUserId
       );
 

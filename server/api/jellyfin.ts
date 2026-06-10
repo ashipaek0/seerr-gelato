@@ -474,47 +474,64 @@ class JellyfinAPI extends ExternalAPI {
   /**
    * Trigger Gelato to add a virtual item to Jellyfin's library.
    *
-   * Gelato's SearchActionFilter intercepts /Items?searchTerm= to cache
-   * StremioMeta in memory. Then Gelato's InsertActionFilter intercepts
-   * /Items/<guid> to call InsertMeta() and create the database item.
+   * Searches by title+year (text that Stremio handles), then verifies
+   * the match by TMDB ID before triggering insertion. Gelato's
+   * SearchActionFilter caches StremioMeta on search, and InsertActionFilter
+   * calls InsertMeta() on item retrieval.
    */
   public async triggerGelatoInsert(
-    searchTerm: string,
+    title: string,
     type: 'movie' | 'series',
+    tmdbId: number,
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Use /Users/{userId}/Items so Gelato resolves the Stremio config
-      // from the user context (the route userId takes priority over API key claims)
       const searchPath = `/Users/${userId}/Items`;
       const searchResponse = await this.get<{
-        Items: Array<{ Id: string; Name: string }>;
+        Items: Array<{
+          Id: string;
+          Name: string;
+          ProviderIds?: Record<string, string>;
+        }>;
         TotalRecordCount: number;
       }>(searchPath, {
         params: {
-          searchTerm,
+          searchTerm: title,
           IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
           Recursive: true,
-          Limit: 1,
+          Limit: 10,
         },
       });
 
-      const firstItem = searchResponse.Items?.[0];
-      if (!firstItem?.Id) {
+      if (!searchResponse.Items?.length) {
         return { success: false, error: 'No results from Gelato/Stremio search' };
       }
 
-      // Trigger insertion via the same user-scoped path
-      await this.get(`/Users/${userId}/Items/${firstItem.Id}`);
+      // Verify match by TMDB ID to ensure we pick the exact item
+      const targetTmdb = String(tmdbId);
+      const match = searchResponse.Items.find((item) => {
+        const tmdb = item.ProviderIds?.Tmdb || item.ProviderIds?.TheMovieDb;
+        return tmdb === targetTmdb;
+      });
 
-      logger.info(`[Gelato] Insert triggered for ${searchTerm} (${firstItem.Name})`, {
+      if (!match) {
+        return {
+          success: false,
+          error: `TMDB ID ${tmdbId} not found in search results (got ${searchResponse.Items.length} results)`,
+        };
+      }
+
+      // "Click" the matched item — triggers Gelato InsertActionFilter → InsertMeta()
+      await this.get(`/Users/${userId}/Items/${match.Id}`);
+
+      logger.info(`[Gelato] Insert triggered for "${title}" (TMDB: ${tmdbId})`, {
         label: 'Gelato',
-        stremioGuid: firstItem.Id,
+        stremioGuid: match.Id,
       });
 
       return { success: true };
     } catch (e) {
-      logger.error(`[Gelato] Insert failed for ${searchTerm}: ${e.message}`, {
+      logger.error(`[Gelato] Insert failed for "${title}": ${e.message}`, {
         label: 'Gelato',
         error: e.message,
       });
