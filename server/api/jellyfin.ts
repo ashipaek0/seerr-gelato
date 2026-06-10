@@ -479,7 +479,7 @@ class JellyfinAPI extends ExternalAPI {
    * /Items/<guid> to call InsertMeta() and create the database item.
    */
   public async triggerGelatoInsert(
-    imdbId: string,
+    searchTerm: string,
     type: 'movie' | 'series',
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
@@ -492,7 +492,7 @@ class JellyfinAPI extends ExternalAPI {
         TotalRecordCount: number;
       }>(searchPath, {
         params: {
-          searchTerm: imdbId,
+          searchTerm,
           IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
           Recursive: true,
           Limit: 1,
@@ -507,14 +507,14 @@ class JellyfinAPI extends ExternalAPI {
       // Trigger insertion via the same user-scoped path
       await this.get(`/Users/${userId}/Items/${firstItem.Id}`);
 
-      logger.info(`[Gelato] Insert triggered for ${imdbId} (${firstItem.Name})`, {
+      logger.info(`[Gelato] Insert triggered for ${searchTerm} (${firstItem.Name})`, {
         label: 'Gelato',
         stremioGuid: firstItem.Id,
       });
 
       return { success: true };
     } catch (e) {
-      logger.error(`[Gelato] Insert failed for ${imdbId}: ${e.message}`, {
+      logger.error(`[Gelato] Insert failed for ${searchTerm}: ${e.message}`, {
         label: 'Gelato',
         error: e.message,
       });

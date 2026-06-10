@@ -836,24 +836,12 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
     }
 
     try {
-      let imdbId = entity.imdbId;
+      const tmdbId = entity.media.tmdbId;
 
-      if (!imdbId) {
-        const tmdb = new TheMovieDb();
-        if (entity.type === MediaType.MOVIE) {
-          const movie = await tmdb.getMovie({ movieId: entity.media.tmdbId });
-          imdbId = movie.imdb_id;
-        } else {
-          const tv = await tmdb.getTvShow({ tvId: entity.media.tmdbId });
-          imdbId = tv.external_ids?.imdb_id;
-        }
-      }
-
-      if (!imdbId) {
-        logger.warn('No IMDB ID available for Gelato trigger', {
+      if (!tmdbId) {
+        logger.warn('No TMDB ID available for Gelato trigger', {
           label: 'Gelato',
           requestId: entity.id,
-          tmdbId: entity.media.tmdbId,
         });
         return;
       }
@@ -881,13 +869,17 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       const jellyfinType =
         entity.type === MediaType.MOVIE ? 'movie' : 'series';
 
+      // Search by TMDB ID in Stremio URI format (tmdb:<id>) — IMDB IDs
+      // don't work with Stremio's search, but TMDB IDs do
+      const searchTerm = `tmdb:${tmdbId}`;
+
       logger.info(
-        `Triggering Gelato insert for ${jellyfinType} "${entity.media.tmdbId}" (IMDB: ${imdbId})`,
+        `Triggering Gelato insert for ${jellyfinType} "${tmdbId}"`,
         { label: 'Gelato', requestId: entity.id }
       );
 
       const result = await jellyfinClient.triggerGelatoInsert(
-        imdbId,
+        searchTerm,
         jellyfinType,
         admin.jellyfinUserId
       );
