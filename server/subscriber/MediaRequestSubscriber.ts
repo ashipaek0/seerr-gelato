@@ -863,12 +863,20 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         settings.jellyfin.apiKey
       );
 
-      // Get admin user's Jellyfin ID for Gelato config lookup
+      // Get admin user's Jellyfin ID — required for Gelato to resolve Stremio config
       const userRepository = getRepository(User);
       const admin = await userRepository.findOne({
         where: { id: 1 },
         select: ['id', 'jellyfinUserId'],
       });
+
+      if (!admin?.jellyfinUserId) {
+        logger.warn('No Jellyfin user ID found for admin, cannot trigger Gelato', {
+          label: 'Gelato',
+          requestId: entity.id,
+        });
+        return;
+      }
 
       const jellyfinType =
         entity.type === MediaType.MOVIE ? 'movie' : 'series';
@@ -881,7 +889,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       const result = await jellyfinClient.triggerGelatoInsert(
         imdbId,
         jellyfinType,
-        admin?.jellyfinUserId
+        admin.jellyfinUserId
       );
 
       if (result.success) {

@@ -481,31 +481,31 @@ class JellyfinAPI extends ExternalAPI {
   public async triggerGelatoInsert(
     imdbId: string,
     type: 'movie' | 'series',
-    userId?: string
+    userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const params: Record<string, string | number> = {
-        searchTerm: imdbId,
-        IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
-        Recursive: true,
-        Limit: 1,
-      };
-
-      if (userId) {
-        params.userId = userId;
-      }
-
+      // Use /Users/{userId}/Items so Gelato resolves the Stremio config
+      // from the user context (the route userId takes priority over API key claims)
+      const searchPath = `/Users/${userId}/Items`;
       const searchResponse = await this.get<{
         Items: Array<{ Id: string; Name: string }>;
         TotalRecordCount: number;
-      }>('/Items', { params });
+      }>(searchPath, {
+        params: {
+          searchTerm: imdbId,
+          IncludeItemTypes: type === 'movie' ? 'Movie' : 'Series',
+          Recursive: true,
+          Limit: 1,
+        },
+      });
 
       const firstItem = searchResponse.Items?.[0];
       if (!firstItem?.Id) {
         return { success: false, error: 'No results from Gelato/Stremio search' };
       }
 
-      await this.get(`/Items/${firstItem.Id}`);
+      // Trigger insertion via the same user-scoped path
+      await this.get(`/Users/${userId}/Items/${firstItem.Id}`);
 
       logger.info(`[Gelato] Insert triggered for ${imdbId} (${firstItem.Name})`, {
         label: 'Gelato',
