@@ -515,14 +515,24 @@ class JellyfinAPI extends ExternalAPI {
       });
 
       if (!match) {
+        const foundIds = searchResponse.Items
+          .map((item) => item.ProviderIds?.Tmdb || item.ProviderIds?.TheMovieDb || '?')
+          .join(', ');
+        logger.warn(
+          `[Gelato] TMDB ${tmdbId} not in results. Found TMDBs: [${foundIds}]`,
+          { label: 'Gelato', names: searchResponse.Items.map((i) => i.Name) }
+        );
         return {
           success: false,
-          error: `TMDB ID ${tmdbId} not found in search results (got ${searchResponse.Items.length} results)`,
+          error: `TMDB ID ${tmdbId} not found in search results (got ${searchResponse.Items.length} results, TMDBs: ${foundIds})`,
         };
       }
 
       // "Click" the matched item — triggers Gelato InsertActionFilter → InsertMeta()
-      await this.get(`/Users/${userId}/Items/${match.Id}`);
+      // Include userId in query so Gelato can resolve Stremio config
+      await this.get(`/Items/${match.Id}`, {
+        params: { userId },
+      });
 
       logger.info(`[Gelato] Insert triggered for "${title}" (TMDB: ${tmdbId})`, {
         label: 'Gelato',
