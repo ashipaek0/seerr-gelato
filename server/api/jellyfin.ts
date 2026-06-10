@@ -529,10 +529,7 @@ class JellyfinAPI extends ExternalAPI {
       }
 
       // "Click" the matched item — triggers Gelato InsertActionFilter → InsertMeta()
-      // Include userId in query so Gelato can resolve Stremio config
-      await this.get(`/Items/${match.Id}`, {
-        params: { userId },
-      });
+      await this.get(`/Users/${userId}/Items/${match.Id}`);
 
       logger.info(`[Gelato] Insert triggered for "${title}" (TMDB: ${tmdbId})`, {
         label: 'Gelato',
