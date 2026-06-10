@@ -1158,27 +1158,9 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       return;
     }
 
-    try {
-      await this.sendToGelato(event.entity as MediaRequest);
-    } catch (e) {
-      logger.error('Error while sending to Gelato in afterUpdate subscriber', {
-        label: 'Media Request',
-        requestId: (event.entity as MediaRequest).id,
-        errorMessage: e instanceof Error ? e.message : String(e),
-      });
-    }
-
+    // Run updateParentStatus first while entity.status is still APPROVED
     try {
       await this.updateParentStatus(event.entity as MediaRequest);
-
-      if (event.entity.status === MediaRequestStatus.COMPLETED) {
-        if (event.entity.media.mediaType === MediaType.MOVIE) {
-          await this.notifyAvailableMovie(event.entity as MediaRequest, event);
-        }
-        if (event.entity.media.mediaType === MediaType.TV) {
-          await this.notifyAvailableSeries(event.entity as MediaRequest, event);
-        }
-      }
     } catch (e) {
       logger.error(
         'Error while updating parent status in afterUpdate subscriber',
@@ -1189,6 +1171,36 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         }
       );
     }
+
+    try {
+      await this.sendToGelato(event.entity as MediaRequest);
+    } catch (e) {
+      logger.error('Error while sending to Gelato in afterUpdate subscriber', {
+        label: 'Media Request',
+        requestId: (event.entity as MediaRequest).id,
+        errorMessage: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    if (event.entity.status === MediaRequestStatus.COMPLETED) {
+      try {
+        if (event.entity.media.mediaType === MediaType.MOVIE) {
+          await this.notifyAvailableMovie(event.entity as MediaRequest, event);
+        }
+        if (event.entity.media.mediaType === MediaType.TV) {
+          await this.notifyAvailableSeries(event.entity as MediaRequest, event);
+        }
+      } catch (e) {
+        logger.error(
+          'Error while sending availability notification in afterUpdate subscriber',
+          {
+            label: 'Media Request',
+            requestId: (event.entity as MediaRequest).id,
+            errorMessage: e instanceof Error ? e.message : String(e),
+          }
+        );
+      }
+    }
   }
 
   public async afterInsert(event: InsertEvent<MediaRequest>): Promise<void> {
@@ -1196,16 +1208,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
       return;
     }
 
-    try {
-      await this.sendToGelato(event.entity as MediaRequest);
-    } catch (e) {
-      logger.error('Error while sending to Gelato in afterInsert subscriber', {
-        label: 'Media Request',
-        requestId: (event.entity as MediaRequest).id,
-        errorMessage: e instanceof Error ? e.message : String(e),
-      });
-    }
-
+    // Run updateParentStatus first while entity.status is still APPROVED
     try {
       await this.updateParentStatus(event.entity as MediaRequest);
     } catch (e) {
@@ -1217,6 +1220,16 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           errorMessage: e instanceof Error ? e.message : String(e),
         }
       );
+    }
+
+    try {
+      await this.sendToGelato(event.entity as MediaRequest);
+    } catch (e) {
+      logger.error('Error while sending to Gelato in afterInsert subscriber', {
+        label: 'Media Request',
+        requestId: (event.entity as MediaRequest).id,
+        errorMessage: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
