@@ -525,8 +525,12 @@ class JellyfinAPI extends ExternalAPI {
           return { success: true };
         }
 
-        logger.debug(
-          `[Gelato] "${searchTerm}" returned ${searchResponse.Items.length} results, no TMDB ${tmdbId}`,
+        logger.warn(
+          `[Gelato] "${searchTerm}" returned ${searchResponse.Items.length} results, no TMDB ${tmdbId}. Sample: ${
+            searchResponse.Items.slice(0, 5).map(
+              (i) => `${i.Name} [${i.ProviderIds?.Tmdb || i.ProviderIds?.TheMovieDb || 'no-tmdb'}]`
+            ).join(', ')
+          }`,
           { label: 'Gelato' }
         );
       } catch (e) {
