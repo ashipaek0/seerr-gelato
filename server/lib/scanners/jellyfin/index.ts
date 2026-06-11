@@ -147,7 +147,14 @@ class JellyfinScanner
         ? new Date(metadata.DateCreated)
         : undefined;
 
-      if (hasOtherResolution || (!this.enable4kMovie && has4k)) {
+      // Process as non-4K if: has standard streams, or has 4K but 4K
+      // movies are disabled, or has no streams at all (e.g. Gelato
+      // virtual items with empty MediaStreams).
+      if (
+        hasOtherResolution ||
+        (!this.enable4kMovie && has4k) ||
+        (!has4k && !hasOtherResolution)
+      ) {
         await this.processMovie(tmdbId, {
           is4k: false,
           mediaAddedAt,
