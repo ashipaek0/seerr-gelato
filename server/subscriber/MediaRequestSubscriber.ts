@@ -885,10 +885,11 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         }
       }
 
-      // IMDB ID as last resort — some Stremio addons handle it
+      // ID-based searches as fallback — some Stremio addons handle them
       if (imdbId) {
         searchTerms.push(imdbId);
       }
+      searchTerms.push(`tmdb:${tmdbId}`);
 
       if (!searchTerms.length) {
         logger.warn('Could not resolve title from TMDB', {
