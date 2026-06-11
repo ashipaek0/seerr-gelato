@@ -33,6 +33,11 @@ import type {
 } from 'typeorm';
 import { EventSubscriber, Not } from 'typeorm';
 
+// Cache session token to avoid re-authenticating on every Gelato trigger.
+// Rapid-fire requests (e.g. collection approvals) would otherwise race and
+// invalidate each other's tokens.
+let cachedSessionToken: { token: string; expiresAt: number } | null = null;
+
 const sanitizeDisplayName = (displayName: string): string => {
   return displayName
     .normalize('NFD')
@@ -919,29 +924,46 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         return;
       }
 
-      // Get session token — API keys carry a zero GUID userId claim
-      // which causes Gelato's InsertActionFilter to skip. Session tokens
-      // from AuthenticateByName have proper user identity.
+      // Get session token — API keys carry a zero GUID userId claim.
+      // Cache the token to avoid re-authenticating on every trigger,
+      // which would race and invalidate concurrent requests' tokens.
       const jellyfinUsername = process.env.JELLYFIN_USERNAME;
       const jellyfinPassword = process.env.JELLYFIN_PASSWORD;
 
       let sessionToken: string | undefined;
 
       if (jellyfinUsername && jellyfinPassword) {
-        try {
-          const authResponse = await jellyfinClient.login(
-            jellyfinUsername,
-            jellyfinPassword
-          );
-          sessionToken = authResponse.AccessToken;
-          logger.debug('Obtained Jellyfin session token for Gelato', {
-            label: 'Gelato',
-          });
-        } catch (e) {
-          logger.warn('Failed to get Jellyfin session token, falling back to API key', {
-            label: 'Gelato',
-            error: e.message,
-          });
+        // Reuse cached token if valid for at least 30 more seconds
+        if (
+          cachedSessionToken &&
+          cachedSessionToken.expiresAt > Date.now() + 30000
+        ) {
+          sessionToken = cachedSessionToken.token;
+        } else {
+          try {
+            const authResponse = await jellyfinClient.login(
+              jellyfinUsername,
+              jellyfinPassword
+            );
+            sessionToken = authResponse.AccessToken;
+            // Jellyfin tokens typically last hours; cache for 55 minutes
+            cachedSessionToken = {
+              token: sessionToken,
+              expiresAt: Date.now() + 55 * 60 * 1000,
+            };
+            logger.debug('Obtained Jellyfin session token for Gelato', {
+              label: 'Gelato',
+            });
+          } catch (e) {
+            logger.warn(
+              'Failed to get Jellyfin session token, falling back to API key',
+              { label: 'Gelato', error: e.message }
+            );
+            // Try stale cached token as last resort
+            if (cachedSessionToken) {
+              sessionToken = cachedSessionToken.token;
+            }
+          }
         }
       }
 
