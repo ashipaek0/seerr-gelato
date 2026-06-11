@@ -79,3 +79,6 @@ config/cache
 
 # Docker compose
 compose.override.yaml
+
+# Project documentation (local only)
+KNOWLEDGEBASE.md
