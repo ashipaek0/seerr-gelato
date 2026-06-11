@@ -13,22 +13,6 @@ When a media request is approved, instead of dispatching to Radarr or Sonarr for
 
 Everything else — the request workflow, admin approval, permissions, notifications, Jellyfin integration — remains identical to upstream Seerr.
 
-## How It Works
-
-```
-User requests media in Seerr
-        ↓
-Admin approves (or auto-approve)
-        ↓
-Seerr calls Jellyfin /Items?searchTerm=<imdbId>  ← Gelato SearchActionFilter caches metadata
-        ↓
-Seerr calls Jellyfin /Items/<guid>                ← Gelato InsertActionFilter creates virtual item
-        ↓
-Content appears in Jellyfin library, ready to stream
-```
-
-Gelato decorates Jellyfin's standard `/Items` API. No custom endpoints needed — the integration uses Jellyfin's native search and item retrieval, which Gelato intercepts via ASP.NET action filters.
-
 ## Prerequisites
 
 - [Jellyfin](https://jellyfin.org) media server
@@ -47,7 +31,32 @@ docker run -d \
   --name seerr-gelato \
   -p 5055:5055 \
   -v /path/to/config:/app/config \
+  -e JELLYFIN_URL=http://jellyfin:8096 \
+  -e JELLYFIN_API_KEY=your_api_key \
+  -e JELLYFIN_USERNAME=admin \
+  -e JELLYFIN_PASSWORD=your_password \
   irunmole/seerr-gelato:latest
+```
+
+### Docker Compose
+
+```yaml
+services:
+  seerr-gelato:
+    image: irunmole/seerr-gelato:latest
+    container_name: seerr-gelato
+    user: ${PUID:-1000}:${PGID:-1000}
+    ports:
+      - 5055:5055
+    volumes:
+      - ./config:/app/config
+    environment:
+      - TZ=${TZ:-UTC}
+      - JELLYFIN_URL=${JELLYFIN_URL:-http://jellyfin:8096}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      - JELLYFIN_USERNAME=${JELLYFIN_USERNAME}
+      - JELLYFIN_PASSWORD=${JELLYFIN_PASSWORD}
+    restart: unless-stopped
 ```
 
 ### Setup
@@ -57,20 +66,6 @@ docker run -d \
 3. Go to Settings → Jellyfin → enter your Jellyfin URL and API key
 4. Sync your Jellyfin libraries
 5. You're ready — requests will now flow through Gelato
-
-## Current Features
-
-- Full Jellyfin integration with authentication, user import, and management
-- Gelato-powered request fulfillment — no *arr stack needed
-- Support for **PostgreSQL** and **SQLite** databases
-- Supports movies, shows, and mixed libraries
-- Jellyfin library scan to track available titles
-- Customizable request system with individual season or movie requests
-- Admin approval workflow with auto-approve option
-- Granular permission system
-- Various notification agents (Discord, Email, Slack, Telegram, Webhook, etc.)
-- Mobile-friendly design
-- Watchlist and blocklist support
 
 ## Docker Images
 
