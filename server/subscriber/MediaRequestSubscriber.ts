@@ -846,28 +846,48 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         return;
       }
 
-      // Look up title from TMDB — Stremio search only handles text queries.
-      // Try multiple search variations: short titles like "FROM" need the
-      // year for disambiguation, while longer titles match better without it.
       const tmdb = new TheMovieDb();
       let searchTerms: string[] = [];
+      let imdbId: string | undefined;
 
       if (entity.type === MediaType.MOVIE) {
         const movie = await tmdb.getMovie({ movieId: tmdbId });
+        imdbId = movie.imdb_id;
         if (movie.title) {
           searchTerms.push(movie.title);
           if (movie.release_date) {
             searchTerms.push(`${movie.title} ${movie.release_date.slice(0, 4)}`);
           }
+          // Try without leading "The" — helps with common titles
+          const noThe = movie.title.replace(/^The\s+/i, '');
+          if (noThe !== movie.title) {
+            searchTerms.push(noThe);
+            if (movie.release_date) {
+              searchTerms.push(`${noThe} ${movie.release_date.slice(0, 4)}`);
+            }
+          }
         }
       } else {
         const tv = await tmdb.getTvShow({ tvId: tmdbId });
+        imdbId = tv.external_ids?.imdb_id;
         if (tv.name) {
           searchTerms.push(tv.name);
           if (tv.first_air_date) {
             searchTerms.push(`${tv.name} ${tv.first_air_date.slice(0, 4)}`);
           }
+          const noThe = tv.name.replace(/^The\s+/i, '');
+          if (noThe !== tv.name) {
+            searchTerms.push(noThe);
+            if (tv.first_air_date) {
+              searchTerms.push(`${noThe} ${tv.first_air_date.slice(0, 4)}`);
+            }
+          }
         }
+      }
+
+      // IMDB ID as last resort — some Stremio addons handle it
+      if (imdbId) {
+        searchTerms.push(imdbId);
       }
 
       if (!searchTerms.length) {

@@ -502,7 +502,7 @@ class JellyfinAPI extends ExternalAPI {
             searchTerm,
             IncludeItemTypes: includeTypes,
             Recursive: true,
-            Limit: 25,
+            Limit: 50,
           },
         });
 
